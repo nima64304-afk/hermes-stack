@@ -141,7 +141,27 @@ def main() -> int:
 
     # ------------------------------------------------------ create repos
     print(f"[1/5] Creating (or reusing) Space {repo_id} (sdk=docker, cpu-basic, {'private' if PRIVATE_SPACE else 'public'})…")
-    url = make_space_repo(api, repo_id, PRIVATE_SPACE)
+    try:
+        url = make_space_repo(api, repo_id, PRIVATE_SPACE)
+    except Exception as e:
+        # Print HF's own explanation — 402 here means the account cannot create
+        # a Space for free any more, and the body says so explicitly.
+        resp = getattr(e, "response", None)
+        body = ""
+        if resp is not None:
+            try:
+                body = resp.text
+            except Exception:
+                body = "<no body>"
+        print(f"::error:: create_repo failed: {type(e).__name__}: {e}")
+        if body:
+            print(f"::error:: Hugging Face said: {body[:800]}")
+        print("::error:: If this is 402, this Hugging Face account cannot create Spaces "
+              "for free any more (HF removed the free tier). Either add a payment method "
+              "at https://huggingface.co/settings/billing, or create the Space by hand at "
+              "https://huggingface.co/new-space (Docker) and re-run this workflow — "
+              "exist_ok=True will then reuse it.")
+        raise
     print(f"      -> {url}")
 
     print(f"[1/5] Creating (or reusing) private backup dataset {backup_repo}…")
