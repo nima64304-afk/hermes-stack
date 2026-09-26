@@ -7,6 +7,7 @@
 # ============================================================
 from __future__ import annotations
 
+import inspect
 import os
 import sys
 import time
@@ -71,6 +72,22 @@ def check_env() -> tuple[str, str]:
     return hf_user, space_name
 
 
+def make_space_repo(api, repo_id: str, private: bool):
+    """create the Space with whichever SDK kwarg this huggingface_hub has.
+
+    0.3x/1.x used sdk=...; 2.x renamed it to space_sdk=... and dropped sdk
+    entirely — that rename is what broke the deploy with
+    "TypeError: HfApi.create_repo() got an unexpected keyword argument 'sdk'".
+    Inspect the class (not the instance) so the check is stable.
+    """
+    params = inspect.signature(HfApi.create_repo).parameters
+    kwargs = dict(repo_id=repo_id, repo_type="space", private=private, exist_ok=True)
+    kwargs["space_sdk" if "space_sdk" in params else "sdk"] = "docker"
+    if "space_hardware" in params:
+        kwargs["space_hardware"] = "cpu-basic"
+    return api.create_repo(**kwargs)
+
+
 def write_summary(text: str) -> None:
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
@@ -124,14 +141,7 @@ def main() -> int:
 
     # ------------------------------------------------------ create repos
     print(f"[1/5] Creating (or reusing) Space {repo_id} (sdk=docker, cpu-basic, {'private' if PRIVATE_SPACE else 'public'})…")
-    url = api.create_repo(
-        repo_id=repo_id,
-        repo_type="space",
-        sdk="docker",
-        private=PRIVATE_SPACE,
-        exist_ok=True,
-        space_hardware="cpu-basic",
-    )
+    url = make_space_repo(api, repo_id, PRIVATE_SPACE)
     print(f"      -> {url}")
 
     print(f"[1/5] Creating (or reusing) private backup dataset {backup_repo}…")
